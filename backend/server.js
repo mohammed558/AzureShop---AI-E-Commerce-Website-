@@ -10,7 +10,7 @@ const recommendRoutes = require("./routes/recommendations");
 const app = express();
 
 // ── Middleware ─────────────────────────────────────────────────────────────────
-app.use(cors({ origin: ["http://localhost:5173", "http://localhost:3000"] }));
+app.use(cors()); // Allow all for production test, refine later
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
@@ -21,7 +21,7 @@ app.use("/api/speech", speechRoutes);
 app.use("/api/recommendations", recommendRoutes);
 
 // ── Health Check ───────────────────────────────────────────────────────────────
-app.get("/api/health", (req, res) => res.json({ status: "OK" }));
+app.get("/api/health", (req, res) => res.json({ status: "OK", source: "Vercel" }));
 
 // ── Global Error Handler ───────────────────────────────────────────────────────
 app.use((err, req, res, next) => {
@@ -29,5 +29,10 @@ app.use((err, req, res, next) => {
   res.status(500).json({ error: err.message || "Internal Server Error" });
 });
 
-const PORT = process.env.PORT || 8080;
-app.listen(PORT, () => console.log(`✅ Server running on http://localhost:${PORT}`));
+// For local development only
+if (process.env.NODE_ENV !== 'production') {
+  const PORT = process.env.PORT || 8080;
+  app.listen(PORT, () => console.log(`✅ Server running on http://localhost:${PORT}`));
+}
+
+module.exports = app;
