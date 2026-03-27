@@ -21,6 +21,7 @@ app.use("/api/speech", speechRoutes);
 app.use("/api/recommendations", recommendRoutes);
 
 // ── Health Check ───────────────────────────────────────────────────────────────
+app.get("/", (req, res) => res.json({ message: "Welcome to Azure AI E-Commerce API", health: "/api/health" }));
 app.get("/api/health", (req, res) => res.json({ status: "OK", source: "Vercel" }));
 
 // ── Global Error Handler ───────────────────────────────────────────────────────
