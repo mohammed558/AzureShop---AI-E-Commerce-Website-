@@ -107,8 +107,17 @@ class ProductService {
         select: ['id', 'name', 'description', 'price', 'category', 'color', 'pattern', 'rating', 'image'],
         top: filters.limit || 20,
         searchFields: ['name', 'description', 'category'],
-        // Note: orderBy cannot use search.score() with hybrid mode
       };
+
+      // SOFT FILTERING: Add color/pattern to the search query itself instead of hard OData filter
+      // This allows for "best match" behavior (Amazon-style) instead of "0 results"
+      let enhancedQuery = query;
+      if (filters.color && filters.color.toLowerCase() !== 'n/a') {
+        enhancedQuery = `${filters.color} ${enhancedQuery}`;
+      }
+      if (filters.pattern && filters.pattern.toLowerCase() !== 'n/a') {
+        enhancedQuery = `${filters.pattern} ${enhancedQuery}`;
+      }
 
       // Add vector search if embedding succeeded
       if (vector) {
@@ -122,14 +131,14 @@ class ProductService {
         };
       }
 
-      const response = await searchClient.search(query, searchOptions);
+      const response = await searchClient.search(enhancedQuery, searchOptions);
       const results = [];
       for await (const item of response.results) {
         const doc = item.document;
         doc.imageUrl = doc.image;
         doc.score = item.score;
-        // For image search only: apply strict visual similarity threshold
-        if (filters.isImageSearch && item.score < 0.1) continue;
+        // For image search only: apply a soft similarity threshold
+        if (filters.isImageSearch && item.score < 0.02) continue;
         results.push(doc);
       }
 
@@ -148,13 +157,37 @@ class ProductService {
     }
   }
 
+  /**
+   * Delete all documents from the Azure Search Index to prevent "Index Pollution"
+   */
+  async clearSearchIndex() {
+    try {
+      console.log('🧹 Clearing Azure Search Index...');
+      // 1. Get all document IDs (up to 1000 for safety, typical for this scale)
+      const response = await searchClient.search('*', { select: ['id'], top: 1000 });
+      const idsToDelete = [];
+      for await (const item of response.results) {
+        idsToDelete.push({ id: item.document.id });
+      }
+
+      if (idsToDelete.length > 0) {
+        await searchClient.deleteDocuments(idsToDelete);
+        console.log(`✅ Deleted ${idsToDelete.length} documents from index.`);
+      } else {
+        console.log('Index already empty.');
+      }
+    } catch (error) {
+      console.error('Error clearing index:', error);
+      // Don't throw, just log so sync can continue even if clear fails
+    }
+  }
+
   /** Build OData filter string from filters object */
   _buildFilter(filters) {
     const parts = [];
     if (filters.category) parts.push(`category eq '${filters.category}'`);
-    if (filters.color && filters.color.toLowerCase() !== 'n/a') {
-      parts.push(`color eq '${filters.color}'`);
-    }
+    // NOTE: Color and Pattern are now handled as "Soft Matches" in the query string
+    // to prevent 0 results when an exact match isn't found.
     return parts.join(' and ');
   }
 
@@ -260,8 +293,11 @@ class ProductService {
    * Initial Sync: Push all DB products to Azure Search
    */
   async syncAllToAzure() {
+    // 1. Clear existing index to prevent "Index Pollution" (duplicates)
+    await this.clearSearchIndex();
+
     const products = await prisma.product.findMany();
-    console.log(`同步 ${products.length} products to Azure...`);
+    console.log(`🚀 Syncing ${products.length} products to Azure...`);
     
     for (const product of products) {
       const embeddingText = `${product.name} ${product.description} ${product.category} ${product.color} ${product.pattern}`;

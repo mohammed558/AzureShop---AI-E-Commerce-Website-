@@ -1,61 +1,78 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { motion, AnimatePresence } from 'framer-motion';
-import { 
-  Search, 
-  Mic, 
-  Camera, 
-  ShoppingCart, 
-  Sparkles,
-  X,
-  Loader2,
-  Menu,
-  Upload
-} from 'lucide-react';
+import { AnimatePresence, motion } from 'framer-motion';
+import { Search, Mic, Camera, ShoppingBag, Heart, Upload, X, Loader2, Clock, TrendingUp, BarChart2, Menu } from 'lucide-react';
 import { voiceSearch, imageSearch } from '../services/api';
-import { cn } from '../lib/utils';
+import { useWishlist } from '../lib/useWishlist';
+import { trackSearch } from '../lib/useAnalytics';
+import toast from 'react-hot-toast';
+
+const TRENDING_SEARCHES = [
+  'wireless headphones', 'running shoes', 'laptop', 'smartwatch',
+  'bluetooth speaker', 'gaming mouse', 'yoga mat', 'coffee maker',
+];
+const SEARCH_HISTORY_KEY = 'azureshop_search_history';
+function getSearchHistory() {
+  try { return JSON.parse(localStorage.getItem(SEARCH_HISTORY_KEY) || '[]'); } catch { return []; }
+}
+function saveSearchHistory(history) {
+  try { localStorage.setItem(SEARCH_HISTORY_KEY, JSON.stringify(history.slice(0, 8))); } catch {}
+}
+
+// ─── Promo messages cycling in the top bar ─────────────────────────
+const PROMOS = [
+  'FREE SHIPPING ON ORDERS ABOVE ₹999',
+  'AI-POWERED SEARCH — FIND ANYTHING INSTANTLY',
+  'NEW ARRIVALS EVERY WEEK',
+];
 
 export default function Navbar() {
-  const [query, setQuery] = useState('');
-  const [listening, setListening] = useState(false);
+  const [query, setQuery]           = useState('');
+  const [listening, setListening]   = useState(false);
   const [isScrolled, setIsScrolled] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-  const [showSearchFocus, setShowSearchFocus] = useState(false);
+  const [showSuggestions, setShowSuggestions]   = useState(false);
   const [isProcessingVoice, setIsProcessingVoice] = useState(false);
   const [isProcessingImage, setIsProcessingImage] = useState(false);
-  const [voiceError, setVoiceError] = useState('');
-  const [imageError, setImageError] = useState('');
-  const [showImageOptions, setShowImageOptions] = useState(false);
-  const [showCameraModal, setShowCameraModal] = useState(false);
-  const fileRef = useRef();
-  const videoRef = useRef();
-  const canvasRef = useRef();
-  const streamRef = useRef(null);
+  const [showImageOptions, setShowImageOptions]   = useState(false);
+  const [showCameraModal, setShowCameraModal]     = useState(false);
+  const [searchHistory, setSearchHistory] = useState(getSearchHistory);
+  const [promoIndex, setPromoIndex]       = useState(0);
+
+  const fileRef         = useRef();
+  const videoRef        = useRef();
+  const canvasRef       = useRef();
+  const streamRef       = useRef(null);
   const imageOptionsRef = useRef();
-  const navigate = useNavigate();
-  const location = useLocation();
+  const suggestionsRef  = useRef();
+  const navigate  = useNavigate();
+  const location  = useLocation();
+  const { wishlist } = useWishlist();
 
-  // Track scroll for glass effect
+  // Scroll effect
   useEffect(() => {
-    const handleScroll = () => {
-      setIsScrolled(window.scrollY > 20);
-    };
-    window.addEventListener('scroll', handleScroll, { passive: true });
-    return () => window.removeEventListener('scroll', handleScroll);
+    const onScroll = () => setIsScrolled(window.scrollY > 20);
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => window.removeEventListener('scroll', onScroll);
   }, []);
 
-  // Close image options dropdown on outside click
+  // Cycle promo bar
   useEffect(() => {
-    const handleOutsideClick = (e) => {
-      if (imageOptionsRef.current && !imageOptionsRef.current.contains(e.target)) {
-        setShowImageOptions(false);
-      }
-    };
-    document.addEventListener('mousedown', handleOutsideClick);
-    return () => document.removeEventListener('mousedown', handleOutsideClick);
+    const t = setInterval(() => setPromoIndex(i => (i + 1) % PROMOS.length), 4000);
+    return () => clearInterval(t);
   }, []);
 
-  // Stop camera stream when modal closes
+  // Outside-click dismissals
+  useEffect(() => {
+    const handler = (e) => {
+      if (imageOptionsRef.current && !imageOptionsRef.current.contains(e.target)) setShowImageOptions(false);
+      if (suggestionsRef.current && !suggestionsRef.current.contains(e.target)) setShowSuggestions(false);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
+  // Stop camera stream
   useEffect(() => {
     if (!showCameraModal && streamRef.current) {
       streamRef.current.getTracks().forEach(t => t.stop());
@@ -63,109 +80,107 @@ export default function Navbar() {
     }
   }, [showCameraModal]);
 
-  // Text Search
+  // Clear search on home
+  useEffect(() => {
+    if (location.pathname === '/') setQuery('');
+  }, [location.pathname]);
+
+  // ─── Text Search ─────────────────────────────────────────────────
   const handleSearch = (e) => {
-    e.preventDefault();
-    if (query.trim()) {
-      navigate(`/search?q=${encodeURIComponent(query.trim())}`);
-      setShowSearchFocus(false);
+    e?.preventDefault();
+    const q = query.trim();
+    if (q) {
+      const hist = [q, ...searchHistory.filter(h => h !== q)];
+      saveSearchHistory(hist);
+      setSearchHistory(hist.slice(0, 8));
+      trackSearch(q);
+      navigate(`/search?q=${encodeURIComponent(q)}`);
+      setShowSuggestions(false);
     }
   };
 
-  // Voice Search
+  const handleSuggestionClick = (term) => {
+    setQuery(term);
+    const hist = [term, ...searchHistory.filter(h => h !== term)];
+    saveSearchHistory(hist);
+    setSearchHistory(hist.slice(0, 8));
+    trackSearch(term);
+    navigate(`/search?q=${encodeURIComponent(term)}`);
+    setShowSuggestions(false);
+  };
+
+  const clearHistory = () => { saveSearchHistory([]); setSearchHistory([]); };
+
+  // ─── Voice Search ─────────────────────────────────────────────────
   const startVoice = async () => {
     if (listening || isProcessingVoice) return;
-    
-    setVoiceError('');
     setListening(true);
-    
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       const recorder = new MediaRecorder(stream);
       const chunks = [];
-
       recorder.ondataavailable = (e) => chunks.push(e.data);
       recorder.onstop = async () => {
         setListening(false);
         setIsProcessingVoice(true);
-        
-        const blob = new Blob(chunks, { type: 'audio/wav' });
         try {
-          const res = await voiceSearch(blob);
+          const initialBlob = new Blob(chunks);
+          const arrayBuffer = await initialBlob.arrayBuffer();
+          const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+          const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
+          const { encodeWAV } = await import('../lib/wavEncoder');
+          const wavBlob = await encodeWAV(audioBuffer);
+          const res = await voiceSearch(wavBlob);
           if (res.text) {
             setQuery(res.text);
             navigate(`/search?q=${encodeURIComponent(res.text)}`);
+            toast.success(`Searching: "${res.text}"`);
           } else {
-            setVoiceError('Could not understand audio. Please try again.');
+            toast.error('Could not understand audio. Please try again.');
           }
         } catch (err) {
-          setVoiceError('Voice search failed. Please try again.');
+          toast.error('Voice search failed. Please try again.');
         } finally {
           setIsProcessingVoice(false);
           stream.getTracks().forEach(t => t.stop());
         }
       };
-
-      recorder.onerror = () => {
-        setListening(false);
-        setVoiceError('Recording error. Please try again.');
-      };
-
+      recorder.onerror = () => { setListening(false); toast.error('Recording error.'); };
       recorder.start();
-      setTimeout(() => {
-        if (recorder.state === 'recording') {
-          recorder.stop();
-        }
-      }, 4000);
-    } catch (err) {
+      setTimeout(() => { if (recorder.state === 'recording') recorder.stop(); }, 4000);
+    } catch {
       setListening(false);
-      setVoiceError('Microphone permission denied or not available.');
+      toast.error('Microphone not available.');
     }
   };
 
-  // Image Search
+  // ─── Image Search ────────────────────────────────────────────────
   const handleImageUpload = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
-    
-    setImageError('');
     setIsProcessingImage(true);
-    
     try {
       const results = await imageSearch(file);
-      if (results && results.length > 0) {
-        navigate('/search', { state: { results, label: 'Image Search Results' } });
+      if (results?.length > 0) {
+        toast.success(`Found ${results.length} similar products!`);
+        navigate('/search', { state: { results, label: 'Visual Search Results' } });
       } else {
-        setImageError('No similar products found. Try a different image.');
+        toast.error('No similar products found.');
       }
-    } catch (err) {
-      setImageError('Image search failed. Please try again.');
-    } finally {
-      setIsProcessingImage(false);
-      e.target.value = '';
-    }
+    } catch { toast.error('Image search failed.'); }
+    finally { setIsProcessingImage(false); e.target.value = ''; }
   };
 
-  // Open live camera
   const openCamera = async () => {
     setShowImageOptions(false);
-    setImageError('');
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
       streamRef.current = stream;
       setShowCameraModal(true);
-      setTimeout(() => {
-        if (videoRef.current) {
-          videoRef.current.srcObject = stream;
-          videoRef.current.play();
-        }
-      }, 100);
-    } catch (err) {
-      setImageError('Camera permission denied or not available.');
-    }
+      setTimeout(() => { if (videoRef.current) { videoRef.current.srcObject = stream; videoRef.current.play(); } }, 100);
+    } catch { toast.error('Camera not available.'); }
   };
 
-  // Capture photo from video stream
   const capturePhoto = async () => {
     if (!videoRef.current || !canvasRef.current) return;
     const video = videoRef.current;
@@ -173,520 +188,273 @@ export default function Navbar() {
     canvas.width = video.videoWidth;
     canvas.height = video.videoHeight;
     canvas.getContext('2d').drawImage(video, 0, 0);
-    
     setShowCameraModal(false);
     setIsProcessingImage(true);
-    
     canvas.toBlob(async (blob) => {
       const file = new File([blob], 'capture.jpg', { type: 'image/jpeg' });
       try {
         const results = await imageSearch(file);
-        if (results && results.length > 0) {
-          navigate('/search', { state: { results, label: 'Image Search Results' } });
-        } else {
-          setImageError('No similar products found. Try a different image.');
-        }
-      } catch (err) {
-        setImageError('Image search failed. Please try again.');
-      } finally {
-        setIsProcessingImage(false);
-      }
-    }, 'image/jpeg', 0.9);
+        if (results?.length > 0) {
+          toast.success(`Found ${results.length} similar products!`);
+          navigate('/search', { state: { results, label: 'Camera Search Results' } });
+        } else { toast.error('No similar products found.'); }
+      } catch { toast.error('Image search failed.'); }
+      finally { setIsProcessingImage(false); }
+    }, 'image/jpeg', 0.85);
   };
 
-  const navLinks = [
-    { path: '/', label: 'Home', icon: Sparkles },
-    { path: '/cart', label: 'Cart', icon: ShoppingCart },
-  ];
+  const suggestions = query.length > 0
+    ? TRENDING_SEARCHES.filter(t => t.toLowerCase().includes(query.toLowerCase()))
+    : [];
+  const showDropdown = showSuggestions && (query ? suggestions.length > 0 : searchHistory.length > 0 || TRENDING_SEARCHES.length > 0);
 
   return (
     <>
-      <motion.nav
-        initial={{ y: -100, opacity: 0 }}
-        animate={{ y: 0, opacity: 1 }}
-        transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
-        className={cn(
-          "fixed top-0 left-0 right-0 z-50 transition-all duration-500",
-          isScrolled 
-            ? "bg-white/80 backdrop-blur-xl shadow-lg shadow-black/5 border-b border-white/20" 
-            : "bg-transparent"
-        )}
-      >
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between h-16 lg:h-20 gap-4">
-            
+      {/* ── Top Promo Bar ─────────────────────────────────────────── */}
+      <div className="bg-[#111111] text-white h-8 sm:h-9 flex items-center justify-center overflow-hidden relative px-2 sm:px-0">
+        <AnimatePresence mode="wait">
+          <motion.p
+            key={promoIndex}
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -8 }}
+            transition={{ duration: 0.35 }}
+            className="text-[8px] sm:text-[10px] tracking-[0.15em] sm:tracking-[0.2em] uppercase font-medium font-sans absolute text-center"
+          >
+            {PROMOS[promoIndex]}
+          </motion.p>
+        </AnimatePresence>
+      </div>
+
+      {/* ── Main Navbar ───────────────────────────────────────────── */}
+      <header className={`sticky top-0 z-50 bg-white transition-shadow duration-300 ${isScrolled ? 'shadow-[0_1px_0_0_#E0E0E0]' : 'border-b border-[#E0E0E0]'}`}>
+        <div className="max-w-[1400px] mx-auto px-3 sm:px-4 md:px-6 lg:px-10">
+          <div className="flex items-center h-14 sm:h-16 gap-2 sm:gap-4 lg:gap-8">
+
             {/* Logo */}
-            <motion.div
-              whileHover={{ scale: 1.05 }}
-              whileTap={{ scale: 0.95 }}
+            <button
               onClick={() => navigate('/')}
-              className="flex items-center gap-2 cursor-pointer shrink-0"
+              className="shrink-0 font-serif text-base sm:text-xl font-bold tracking-[0.08em] text-[#111111] uppercase"
             >
-              <div className="relative">
-                <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-azure-500 via-purple-500 to-pink-500 flex items-center justify-center shadow-lg shadow-purple-500/30">
-                  <Sparkles className="w-5 h-5 text-white" />
-                </div>
-                <motion.div
-                  animate={{ rotate: 360 }}
-                  transition={{ duration: 20, repeat: Infinity, ease: "linear" }}
-                  className="absolute -inset-1 rounded-xl border-2 border-dashed border-purple-400/30"
-                />
-              </div>
-              <span className={cn(
-                "text-xl font-bold hidden sm:block transition-colors duration-300",
-                isScrolled ? "text-gray-900" : "text-gray-900"
-              )}>
-                <span className="gradient-text-azure">Azure</span>Shop
-              </span>
-            </motion.div>
+              AzureShop
+            </button>
 
-            {/* Search Bar - Desktop */}
-            <form onSubmit={handleSearch} className="hidden md:flex flex-1 max-w-2xl mx-4">
-              <motion.div 
-                className={cn(
-                  "relative flex items-center w-full group",
-                  showSearchFocus && "z-50"
-                )}
-                animate={showSearchFocus ? { scale: 1.02 } : { scale: 1 }}
-                transition={{ duration: 0.2 }}
-              >
-                <div className={cn(
-                  "absolute inset-0 rounded-2xl transition-all duration-300",
-                  showSearchFocus 
-                    ? "bg-white shadow-2xl shadow-purple-500/20 ring-2 ring-purple-500/30" 
-                    : "bg-gray-100/80 group-hover:bg-white group-hover:shadow-lg"
-                )} />
-                
-                <Search className="relative z-10 w-5 h-5 text-gray-400 ml-4" />
-                
-                <input
-                  type="text"
-                  value={query}
-                  onChange={(e) => setQuery(e.target.value)}
-                  onFocus={() => setShowSearchFocus(true)}
-                  onBlur={() => setShowSearchFocus(false)}
-                  placeholder='Search: "shoes for wedding", "budget laptop"...'
-                  className="relative z-10 flex-1 bg-transparent border-none outline-none px-3 py-3 text-gray-700 placeholder:text-gray-400"
-                />
-                
-                {query && (
-                  <motion.button
-                    initial={{ opacity: 0, scale: 0.8 }}
-                    animate={{ opacity: 1, scale: 1 }}
-                    exit={{ opacity: 0, scale: 0.8 }}
-                    type="button"
-                    onClick={() => setQuery('')}
-                    className="relative z-10 p-1 mr-2 hover:bg-gray-200 rounded-full transition-colors"
-                  >
-                    <X className="w-4 h-4 text-gray-400" />
-                  </motion.button>
-                )}
+            {/* Desktop Nav Links */}
+            <nav className="hidden lg:flex items-center gap-7 ml-2">
+              {[
+                { label: 'New In', path: '/search?q=new' },
+                { label: 'Electronics', path: '/search?q=electronics' },
+                { label: 'Fashion', path: '/search?q=fashion' },
+                { label: 'Home', path: '/search?q=home' },
+                { label: 'Sports', path: '/search?q=sports' },
+              ].map(nav => (
+                <button
+                  key={nav.label}
+                  onClick={() => navigate(nav.path)}
+                  className="text-[11px] font-medium tracking-[0.15em] uppercase text-[#3a3a3a] hover:text-[#111] transition-colors duration-200"
+                >
+                  {nav.label}
+                </button>
+              ))}
+            </nav>
 
-                <div className="relative z-10 flex items-center gap-1 pr-2">
-                  {/* Voice Search Button */}
-                  <div className="relative">
-                    <motion.button
-                      type="button"
-                      onClick={startVoice}
-                      disabled={isProcessingVoice}
-                      whileHover={{ scale: 1.1 }}
-                      whileTap={{ scale: 0.9 }}
-                      className={cn(
-                        "p-2 rounded-xl transition-all duration-300 relative",
-                        listening 
-                          ? "bg-red-500 text-white" 
-                          : isProcessingVoice
-                            ? "bg-purple-100 text-purple-600"
-                            : "hover:bg-gray-200 text-gray-500"
-                      )}
-                    >
-                      {isProcessingVoice ? (
-                        <Loader2 className="w-4 h-4 animate-spin" />
-                      ) : listening ? (
-                        <>
-                          <Mic className="w-4 h-4 animate-pulse" />
-                          <span className="absolute -top-1 -right-1 w-2 h-2 bg-red-500 rounded-full animate-ping" />
-                        </>
-                      ) : (
-                        <Mic className="w-4 h-4" />
-                      )}
-                    </motion.button>
-                    
-                    {/* Voice Status Tooltip */}
-                    <AnimatePresence>
-                      {(listening || isProcessingVoice) && (
-                        <motion.div
-                          initial={{ opacity: 0, y: 10 }}
-                          animate={{ opacity: 1, y: 0 }}
-                          exit={{ opacity: 0, y: 10 }}
-                          className="absolute top-full mt-2 left-1/2 -translate-x-1/2 px-3 py-1.5 bg-gray-900 text-white text-xs rounded-lg whitespace-nowrap z-50"
-                        >
-                          {listening ? 'Listening...' : 'Processing...'}
-                        </motion.div>
-                      )}
-                    </AnimatePresence>
-                  </div>
-                  
-                  {/* Image Search Button */}
-                  <div className="relative" ref={imageOptionsRef}>
-                    <motion.button
-                      type="button"
-                      onClick={() => !isProcessingImage && setShowImageOptions(prev => !prev)}
-                      disabled={isProcessingImage}
-                      whileHover={{ scale: 1.1 }}
-                      whileTap={{ scale: 0.9 }}
-                      className={cn(
-                        "p-2 rounded-xl transition-all duration-300",
-                        isProcessingImage
-                          ? "bg-purple-100 text-purple-600"
-                          : showImageOptions
-                            ? "bg-gray-200 text-gray-700"
-                            : "hover:bg-gray-200 text-gray-500"
-                      )}
-                    >
-                      {isProcessingImage ? (
-                        <Loader2 className="w-4 h-4 animate-spin" />
-                      ) : (
-                        <Camera className="w-4 h-4" />
-                      )}
-                    </motion.button>
-                    
-                    {/* Image Options Dropdown */}
+            {/* Search Bar */}
+            <div ref={suggestionsRef} className="flex-1 max-w-xl relative min-w-0">
+              <form onSubmit={handleSearch} className="relative">
+                <div className="flex items-center bg-[#f4f4f4] px-2 sm:px-4 h-9 sm:h-10 gap-1 sm:gap-2">
+                  <Search className="w-3.5 sm:w-4 h-3.5 sm:h-4 text-[#7a7a7a] shrink-0" />
+                  <input
+                    value={query}
+                    onChange={e => { setQuery(e.target.value); setShowSuggestions(true); }}
+                    onFocus={() => setShowSuggestions(true)}
+                    placeholder='Search...'
+                    className="flex-1 bg-transparent text-[11px] sm:text-[13px] text-[#111] placeholder:text-[#9a9a9a] outline-none min-w-0"
+                  />
+                  {query && (
+                    <button type="button" onClick={() => { setQuery(''); setShowSuggestions(false); }} className="p-0.5 text-[#9a9a9a] hover:text-[#111] shrink-0">
+                      <X className="w-3 sm:w-3.5 h-3 sm:h-3.5" />
+                    </button>
+                  )}
+
+                  {/* Voice */}
+                  <button type="button" onClick={startVoice} className="p-0.5 text-[#7a7a7a] hover:text-[#111] transition-colors shrink-0">
+                    {listening ? <Loader2 className="w-3.5 sm:w-4 h-3.5 sm:h-4 animate-spin text-[#b8942a]" /> :
+                     isProcessingVoice ? <Loader2 className="w-3.5 sm:w-4 h-3.5 sm:h-4 animate-spin" /> :
+                     <Mic className="w-3.5 sm:w-4 h-3.5 sm:h-4" />}
+                  </button>
+
+                  {/* Image Search */}
+                  <div ref={imageOptionsRef} className="relative">
+                    <button type="button" onClick={() => setShowImageOptions(v => !v)} className="p-0.5 text-[#7a7a7a] hover:text-[#111] transition-colors shrink-0">
+                      {isProcessingImage ? <Loader2 className="w-3.5 sm:w-4 h-3.5 sm:h-4 animate-spin" /> : <Camera className="w-3.5 sm:w-4 h-3.5 sm:h-4" />}
+                    </button>
                     <AnimatePresence>
                       {showImageOptions && (
                         <motion.div
-                          initial={{ opacity: 0, y: 8, scale: 0.95 }}
-                          animate={{ opacity: 1, y: 0, scale: 1 }}
-                          exit={{ opacity: 0, y: 8, scale: 0.95 }}
-                          transition={{ duration: 0.15 }}
-                          className="absolute top-full mt-2 right-0 bg-white rounded-xl shadow-xl border border-gray-100 overflow-hidden z-50 min-w-[160px]"
+                          initial={{ opacity: 0, y: 6 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          exit={{ opacity: 0, y: 6 }}
+                          className="absolute right-0 top-8 bg-white border border-[#e0e0e0] shadow-lg py-1 min-w-[180px] z-50"
                         >
                           <button
-                            onClick={() => { setShowImageOptions(false); fileRef.current.click(); }}
-                            className="w-full flex items-center gap-3 px-4 py-3 text-sm text-gray-700 hover:bg-purple-50 hover:text-purple-600 transition-colors"
+                            onClick={() => { setShowImageOptions(false); fileRef.current?.click(); }}
+                            className="w-full text-left px-4 py-2.5 text-[12px] tracking-wide text-[#3a3a3a] hover:bg-[#f4f4f4] flex items-center gap-2"
                           >
-                            <Upload className="w-4 h-4" />
-                            Upload Image
+                            <Upload className="w-4 h-4" /> Upload Photo
                           </button>
-                          <div className="border-t border-gray-100" />
                           <button
                             onClick={openCamera}
-                            className="w-full flex items-center gap-3 px-4 py-3 text-sm text-gray-700 hover:bg-purple-50 hover:text-purple-600 transition-colors"
+                            className="w-full text-left px-4 py-2.5 text-[12px] tracking-wide text-[#3a3a3a] hover:bg-[#f4f4f4] flex items-center gap-2"
                           >
-                            <Camera className="w-4 h-4" />
-                            Take Photo
+                            <Camera className="w-4 h-4" /> Use Camera
                           </button>
-                        </motion.div>
-                      )}
-                    </AnimatePresence>
-                    
-                    {/* Image Status Tooltip */}
-                    <AnimatePresence>
-                      {isProcessingImage && (
-                        <motion.div
-                          initial={{ opacity: 0, y: 10 }}
-                          animate={{ opacity: 1, y: 0 }}
-                          exit={{ opacity: 0, y: 10 }}
-                          className="absolute top-full mt-2 left-1/2 -translate-x-1/2 px-3 py-1.5 bg-gray-900 text-white text-xs rounded-lg whitespace-nowrap z-50"
-                        >
-                          Analyzing image...
                         </motion.div>
                       )}
                     </AnimatePresence>
                   </div>
-                  
-                  <motion.button
-                    type="submit"
-                    whileHover={{ scale: 1.05 }}
-                    whileTap={{ scale: 0.95 }}
-                    className="ml-1 px-4 py-2 bg-gradient-to-r from-azure-500 to-purple-600 text-white rounded-xl font-medium shadow-lg shadow-purple-500/30 hover:shadow-purple-500/50 transition-shadow"
-                  >
-                    Search
-                  </motion.button>
                 </div>
-              </motion.div>
-              
-              <input 
-                ref={fileRef} 
-                type="file" 
-                accept="image/*" 
-                className="hidden" 
-                onChange={handleImageUpload} 
-              />
-            </form>
 
-            {/* Right Actions */}
-            <div className="flex items-center gap-2">
-              {/* Cart Button */}
-              <motion.button
-                onClick={() => navigate('/cart')}
-                whileHover={{ scale: 1.05 }}
-                whileTap={{ scale: 0.95 }}
-                className={cn(
-                  "relative p-2.5 rounded-xl transition-all duration-300",
-                  location.pathname === '/cart'
-                    ? "bg-gradient-to-r from-azure-500 to-purple-600 text-white shadow-lg shadow-purple-500/30"
-                    : "hover:bg-gray-100 text-gray-600"
+                {/* Suggestions Dropdown */}
+                <AnimatePresence>
+                  {showDropdown && (
+                    <motion.div
+                      initial={{ opacity: 0, y: 4 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: 4 }}
+                      className="absolute top-full left-0 right-0 bg-white border border-[#e0e0e0] border-t-0 shadow-lg z-50 max-h-72 overflow-y-auto"
+                    >
+                      {query === '' && searchHistory.length > 0 && (
+                        <div>
+                          <div className="flex items-center justify-between px-4 pt-3 pb-1">
+                            <span className="text-[10px] tracking-[0.15em] uppercase text-[#7a7a7a]">Recent</span>
+                            <button onClick={clearHistory} className="text-[10px] text-[#7a7a7a] hover:text-[#111] tracking-wide uppercase">Clear</button>
+                          </div>
+                          {searchHistory.map((h, i) => (
+                            <button key={i} onClick={() => handleSuggestionClick(h)}
+                              className="w-full text-left px-4 py-2 text-[12px] text-[#3a3a3a] hover:bg-[#f4f4f4] flex items-center gap-2">
+                              <Clock className="w-3.5 h-3.5 text-[#9a9a9a]" /> {h}
+                            </button>
+                          ))}
+                          <div className="border-t border-[#e0e0e0] mt-1" />
+                        </div>
+                      )}
+                      {query === '' && (
+                        <div>
+                          <div className="px-4 pt-3 pb-1">
+                            <span className="text-[10px] tracking-[0.15em] uppercase text-[#7a7a7a]">Trending</span>
+                          </div>
+                          {TRENDING_SEARCHES.map((t, i) => (
+                            <button key={i} onClick={() => handleSuggestionClick(t)}
+                              className="w-full text-left px-4 py-2 text-[12px] text-[#3a3a3a] hover:bg-[#f4f4f4] flex items-center gap-2">
+                              <TrendingUp className="w-3.5 h-3.5 text-[#9a9a9a]" /> {t}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                      {query !== '' && suggestions.map((s, i) => (
+                        <button key={i} onClick={() => handleSuggestionClick(s)}
+                          className="w-full text-left px-4 py-2.5 text-[12px] text-[#3a3a3a] hover:bg-[#f4f4f4] flex items-center gap-2">
+                          <Search className="w-3.5 h-3.5 text-[#9a9a9a]" /> {s}
+                        </button>
+                      ))}
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </form>
+              <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={handleImageUpload} />
+            </div>
+
+            {/* Right Icons */}
+            <div className="flex items-center gap-2 sm:gap-3 md:gap-5 ml-auto shrink-0">
+              <button onClick={() => navigate('/analytics')} title="Analytics" className="hidden md:flex text-[#3a3a3a] hover:text-[#111] transition-colors">
+                <BarChart2 className="w-4 sm:w-5 h-4 sm:h-5" />
+              </button>
+              <button onClick={() => navigate('/wishlist')} className="relative text-[#3a3a3a] hover:text-[#111] transition-colors">
+                <Heart className="w-4 sm:w-5 h-4 sm:h-5" />
+                {wishlist.length > 0 && (
+                  <span className="absolute -top-2 -right-2 w-4 h-4 bg-[#111] text-white text-[7px] sm:text-[9px] font-bold flex items-center justify-center rounded-full">
+                    {wishlist.length > 9 ? '9+' : wishlist.length}
+                  </span>
                 )}
-              >
-                <ShoppingCart className="w-5 h-5" />
+              </button>
+              <button onClick={() => navigate('/cart')} className="relative text-[#3a3a3a] hover:text-[#111] transition-colors">
+                <ShoppingBag className="w-4 sm:w-5 h-4 sm:h-5" />
                 <CartBadge />
-              </motion.button>
-
-              {/* Mobile Menu Button */}
-              <motion.button
-                onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-                whileHover={{ scale: 1.05 }}
-                whileTap={{ scale: 0.95 }}
-                className="md:hidden p-2.5 hover:bg-gray-100 rounded-xl text-gray-600 transition-colors"
-              >
-                {isMobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
-              </motion.button>
+              </button>
+              {/* Mobile menu */}
+              <button onClick={() => setIsMobileMenuOpen(v => !v)} className="lg:hidden text-[#3a3a3a] hover:text-[#111]">
+                {isMobileMenuOpen ? <X className="w-4 sm:w-5 h-4 sm:h-5" /> : <Menu className="w-4 sm:w-5 h-4 sm:h-5" />}
+              </button>
             </div>
           </div>
         </div>
 
-        {/* Mobile Search - Visible on small screens */}
-        <div className="md:hidden px-4 pb-3 relative z-40">
-          <form onSubmit={handleSearch} className="relative">
-            <div className="flex items-center bg-gray-100 rounded-xl px-3 py-2 gap-1">
-              <Search className="w-4 h-4 text-gray-400 flex-shrink-0" />
-              <input
-                type="text"
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                placeholder="Search products..."
-                className="flex-1 bg-transparent border-none outline-none px-2 text-sm"
-              />
-              <button
-                type="button"
-                onClick={startVoice}
-                disabled={isProcessingVoice}
-                className={cn(
-                  "p-1.5 rounded-lg transition-colors flex-shrink-0 z-40",
-                  listening ? "bg-red-500 text-white" : "text-gray-500"
-                )}
-              >
-                {isProcessingVoice ? (
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                ) : (
-                  <Mic className="w-4 h-4" />
-                )}
-              </button>
-              <div className="relative" ref={imageOptionsRef}>
-                <button
-                  type="button"
-                  onClick={() => !isProcessingImage && setShowImageOptions(prev => !prev)}
-                  disabled={isProcessingImage}
-                  className="p-1.5 text-gray-500 flex-shrink-0 z-40"
-                >
-                  {isProcessingImage ? (
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                  ) : (
-                    <Camera className="w-4 h-4" />
-                  )}
-                </button>
-                
-                {/* Mobile Image Options Dropdown */}
-                <AnimatePresence>
-                  {showImageOptions && (
-                    <motion.div
-                      initial={{ opacity: 0, y: 8, scale: 0.95 }}
-                      animate={{ opacity: 1, y: 0, scale: 1 }}
-                      exit={{ opacity: 0, y: 8, scale: 0.95 }}
-                      transition={{ duration: 0.15 }}
-                      className="absolute top-full mt-1 right-0 bg-white rounded-xl shadow-xl border border-gray-100 overflow-hidden z-[60] min-w-[140px]"
-                    >
-                      <button
-                        onClick={() => { setShowImageOptions(false); fileRef.current?.click(); }}
-                        className="w-full flex items-center gap-2 px-3 py-2.5 text-xs text-gray-700 hover:bg-purple-50 hover:text-purple-600 transition-colors"
-                      >
-                        <Upload className="w-3.5 h-3.5" />
-                        Upload
-                      </button>
-                      <div className="border-t border-gray-100" />
-                      <button
-                        onClick={openCamera}
-                        className="w-full flex items-center gap-2 px-3 py-2.5 text-xs text-gray-700 hover:bg-purple-50 hover:text-purple-600 transition-colors"
-                      >
-                        <Camera className="w-3.5 h-3.5" />
-                        Photo
-                      </button>
-                    </motion.div>
-                  )}
-                </AnimatePresence>
-              </div>
-            </div>
-          </form>
-        </div>
-      </motion.nav>
-
-      {/* Mobile Menu Overlay */}
-      <AnimatePresence>
-        {isMobileMenuOpen && (
-          <>
+        {/* Mobile Menu */}
+        <AnimatePresence>
+          {isMobileMenuOpen && (
             <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              className="fixed inset-0 z-40 bg-black/50 backdrop-blur-sm md:hidden"
-              onClick={() => setIsMobileMenuOpen(false)}
-            />
-            <motion.div
-              initial={{ x: '100%' }}
-              animate={{ x: 0 }}
-              exit={{ x: '100%' }}
-              transition={{ type: 'spring', damping: 25, stiffness: 200 }}
-              className="fixed right-0 top-0 h-full w-72 max-w-[85vw] bg-white shadow-2xl z-50 md:hidden flex flex-col"
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: 'auto' }}
+              exit={{ opacity: 0, height: 0 }}
+              className="lg:hidden border-t border-[#e0e0e0] bg-white overflow-hidden"
             >
-              {/* Mobile Menu Header */}
-              <div className="flex items-center justify-between p-4 border-b border-gray-100">
-                <span className="font-bold text-lg">Menu</span>
-                <button 
-                  onClick={() => setIsMobileMenuOpen(false)}
-                  className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
-                >
-                  <X className="w-5 h-5" />
-                </button>
-              </div>
-
-              {/* Mobile Menu Links */}
-              <div className="flex-1 p-4 space-y-2">
-                {navLinks.map((link, index) => (
-                  <motion.button
-                    key={link.path}
-                    initial={{ opacity: 0, x: 20 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    transition={{ delay: index * 0.1 }}
-                    onClick={() => {
-                      navigate(link.path);
-                      setIsMobileMenuOpen(false);
-                    }}
-                    className={cn(
-                      "w-full flex items-center gap-3 px-4 py-3.5 rounded-xl text-left font-medium transition-all",
-                      location.pathname === link.path
-                        ? "bg-gradient-to-r from-azure-500 to-purple-600 text-white shadow-lg shadow-purple-500/30"
-                        : "text-gray-700 hover:bg-gray-100"
-                    )}
+              <div className="max-w-[1400px] mx-auto px-4 py-4 flex flex-col gap-1">
+                {[
+                  { label: 'New In', path: '/search?q=new' },
+                  { label: 'Electronics', path: '/search?q=electronics' },
+                  { label: 'Fashion', path: '/search?q=fashion' },
+                  { label: 'Home & Garden', path: '/search?q=home' },
+                  { label: 'Sports', path: '/search?q=sports' },
+                  { label: 'Analytics', path: '/analytics' },
+                ].map(nav => (
+                  <button
+                    key={nav.label}
+                    onClick={() => { navigate(nav.path); setIsMobileMenuOpen(false); }}
+                    className="text-left text-[12px] tracking-[0.12em] uppercase font-medium text-[#3a3a3a] py-3 border-b border-[#f4f4f4] hover:text-[#111]"
                   >
-                    <link.icon className="w-5 h-5" />
-                    {link.label}
-                  </motion.button>
+                    {nav.label}
+                  </button>
                 ))}
               </div>
-
-              {/* Mobile Menu Footer */}
-              <div className="p-4 border-t border-gray-100">
-                <p className="text-xs text-gray-400 text-center">Powered by Azure AI</p>
-              </div>
             </motion.div>
-          </>
-        )}
-      </AnimatePresence>
+          )}
+        </AnimatePresence>
+      </header>
 
-      {/* Spacer for fixed navbar */}
-      <div className="h-16 lg:h-20" />
-
-      {/* Camera Capture Modal */}
+      {/* ── Camera Modal ─────────────────────────────────────────── */}
       <AnimatePresence>
         {showCameraModal && (
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4"
+            className="fixed inset-0 z-[100] bg-black/80 flex items-center justify-center p-6"
           >
             <motion.div
-              initial={{ scale: 0.9, opacity: 0 }}
+              initial={{ scale: 0.95, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.9, opacity: 0 }}
-              transition={{ type: 'spring', damping: 25 }}
-              className="bg-white rounded-2xl overflow-hidden shadow-2xl w-full max-w-lg"
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="bg-white w-full max-w-md"
             >
-              <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
-                <div className="flex items-center gap-2">
-                  <Camera className="w-5 h-5 text-purple-600" />
-                  <span className="font-semibold text-gray-900">Take a Photo</span>
-                </div>
-                <button
-                  onClick={() => setShowCameraModal(false)}
-                  className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
-                >
-                  <X className="w-5 h-5 text-gray-500" />
+              <div className="flex items-center justify-between px-6 py-4 border-b border-[#e0e0e0]">
+                <h3 className="font-serif text-base font-semibold tracking-wide">Visual Search</h3>
+                <button onClick={() => setShowCameraModal(false)} className="text-[#7a7a7a] hover:text-[#111]">
+                  <X className="w-5 h-5" />
                 </button>
               </div>
-
-              <div className="relative bg-black aspect-video">
-                <video
-                  ref={videoRef}
-                  autoPlay
-                  playsInline
-                  muted
-                  className="w-full h-full object-cover"
-                />
-                <div className="absolute inset-0 pointer-events-none">
-                  <div className="absolute inset-6 border-2 border-white/40 rounded-xl" />
-                  <div className="absolute top-6 left-6 w-6 h-6 border-t-2 border-l-2 border-white rounded-tl-xl" />
-                  <div className="absolute top-6 right-6 w-6 h-6 border-t-2 border-r-2 border-white rounded-tr-xl" />
-                  <div className="absolute bottom-6 left-6 w-6 h-6 border-b-2 border-l-2 border-white rounded-bl-xl" />
-                  <div className="absolute bottom-6 right-6 w-6 h-6 border-b-2 border-r-2 border-white rounded-br-xl" />
+              <div className="p-6">
+                <div className="bg-[#f4f4f4] aspect-video flex items-center justify-center overflow-hidden">
+                  <video ref={videoRef} autoPlay playsInline muted className="w-full h-full object-cover" />
                 </div>
-              </div>
-
-              <canvas ref={canvasRef} className="hidden" />
-
-              <div className="flex items-center justify-between px-5 py-4 bg-gray-50">
-                <p className="text-sm text-gray-500">Point camera at a product to search</p>
-                <motion.button
-                  whileHover={{ scale: 1.05 }}
-                  whileTap={{ scale: 0.95 }}
+                <canvas ref={canvasRef} className="hidden" />
+                <button
                   onClick={capturePhoto}
-                  className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-azure-500 to-purple-600 text-white rounded-xl font-medium shadow-lg shadow-purple-500/30"
+                  className="btn-primary w-full mt-6"
                 >
-                  <Camera className="w-4 h-4" />
-                  Capture
-                </motion.button>
+                  Capture & Search
+                </button>
               </div>
             </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* Error Toast Notifications */}
-      <AnimatePresence>
-        {voiceError && (
-          <motion.div
-            initial={{ opacity: 0, y: -50, x: '-50%' }}
-            animate={{ opacity: 1, y: 0, x: '-50%' }}
-            exit={{ opacity: 0, y: -50, x: '-50%' }}
-            className="fixed top-24 left-1/2 z-[999] px-6 py-3 bg-red-500 text-white rounded-xl shadow-xl flex items-center gap-3"
-          >
-            <Mic className="w-5 h-5" />
-            <span>{voiceError}</span>
-            <button 
-              onClick={() => setVoiceError('')}
-              className="ml-2 p-1 hover:bg-red-600 rounded-lg transition-colors"
-            >
-              <X className="w-4 h-4" />
-            </button>
-          </motion.div>
-        )}
-        
-        {imageError && (
-          <motion.div
-            initial={{ opacity: 0, y: -50, x: '-50%' }}
-            animate={{ opacity: 1, y: 0, x: '-50%' }}
-            exit={{ opacity: 0, y: -50, x: '-50%' }}
-            className="fixed top-24 left-1/2 z-[999] px-6 py-3 bg-red-500 text-white rounded-xl shadow-xl flex items-center gap-3"
-          >
-            <Camera className="w-5 h-5" />
-            <span>{imageError}</span>
-            <button 
-              onClick={() => setImageError('')}
-              className="ml-2 p-1 hover:bg-red-600 rounded-lg transition-colors"
-            >
-              <X className="w-4 h-4" />
-            </button>
           </motion.div>
         )}
       </AnimatePresence>
@@ -694,35 +462,22 @@ export default function Navbar() {
   );
 }
 
-// Cart Badge Component
 function CartBadge() {
   const [count, setCount] = React.useState(0);
-  
   React.useEffect(() => {
-    const updateCount = () => {
+    const update = () => {
       const cart = JSON.parse(localStorage.getItem('cart') || '[]');
-      setCount(cart.reduce((sum, item) => sum + item.qty, 0));
+      setCount(cart.reduce((s, i) => s + i.qty, 0));
     };
-    
-    updateCount();
-    window.addEventListener('storage', updateCount);
-    const interval = setInterval(updateCount, 500);
-    
-    return () => {
-      window.removeEventListener('storage', updateCount);
-      clearInterval(interval);
-    };
+    update();
+    window.addEventListener('storage', update);
+    const t = setInterval(update, 500);
+    return () => { window.removeEventListener('storage', update); clearInterval(t); };
   }, []);
-
   if (count === 0) return null;
-
   return (
-    <motion.span
-      initial={{ scale: 0 }}
-      animate={{ scale: 1 }}
-      className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 text-white text-xs font-bold rounded-full flex items-center justify-center"
-    >
+    <span className="absolute -top-2 -right-2 w-4 h-4 bg-[#111] text-white text-[7px] sm:text-[9px] font-bold flex items-center justify-center rounded-full">
       {count > 9 ? '9+' : count}
-    </motion.span>
+    </span>
   );
 }

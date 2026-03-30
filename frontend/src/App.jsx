@@ -6,10 +6,14 @@ import Home from './pages/Home';
 import SearchResults from './pages/SearchResults';
 import ProductDetail from './pages/ProductDetail';
 import Cart from './pages/Cart';
+import Wishlist from './pages/Wishlist';
+import Analytics from './pages/Analytics';
+import { Toaster } from 'react-hot-toast';
 
 function App() {
   return (
     <Router>
+      <Toaster position="top-center" reverseOrder={false} />
       <div className="min-h-screen bg-gray-50">
         <Navbar />
         <main>
@@ -18,6 +22,8 @@ function App() {
             <Route path="/search" element={<SearchResults />} />
             <Route path="/product/:id" element={<ProductDetail />} />
             <Route path="/cart" element={<Cart />} />
+            <Route path="/wishlist" element={<Wishlist />} />
+            <Route path="/analytics" element={<Analytics />} />
           </Routes>
         </main>
         <ChatBot />

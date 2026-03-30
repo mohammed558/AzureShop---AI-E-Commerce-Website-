@@ -105,4 +105,15 @@ router.get('/:id', async (req, res, next) => {
   }
 });
 
+// POST /api/products/sync
+// Clears Azure Search index and re-syncs all products from DB
+router.post("/sync", async (req, res, next) => {
+  try {
+    await productService.syncAllToAzure();
+    res.json({ message: "Search index cleared and synced successfully" });
+  } catch (err) {
+    next(err);
+  }
+});
+
 module.exports = router;
