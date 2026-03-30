@@ -120,6 +120,17 @@ export default function Navbar() {
 
   // ─── Voice Search ─────────────────────────────────────────────────
   const startVoice = async () => {
+    // Check if camera is currently open
+    if (showCameraModal) {
+      toast.error('📷 Close camera first before using voice recording');
+      return;
+    }
+    
+    if (isProcessingImage) {
+      toast.error('🖼️ Image search in progress. Please wait.');
+      return;
+    }
+    
     if (listening || isProcessingVoice) return;
     setListening(true);
     setRecordingTime(0);
@@ -199,8 +210,20 @@ export default function Navbar() {
   };
 
   const openCamera = async () => {
+    // Check if voice is currently recording
+    if (listening) {
+      toast.error('⏹️ Stop voice recording first before using camera');
+      return;
+    }
+    
+    if (isProcessingVoice) {
+      toast.error('🎤 Voice search in progress. Please wait.');
+      return;
+    }
+    
     setShowImageOptions(false);
     try {
+      console.log('📷 Requesting camera access...');
       const stream = await navigator.mediaDevices.getUserMedia({ 
         video: { 
           facingMode: 'environment',
@@ -209,65 +232,107 @@ export default function Navbar() {
         } 
       });
       
+      console.log('✅ Camera stream obtained');
       streamRef.current = stream;
       setShowCameraModal(true);
       
-      // Wait for video element to be ready
+      // Immediately attach stream to video element
       setTimeout(() => {
         if (videoRef.current) {
+          console.log('📹 Attaching stream to video element');
           videoRef.current.srcObject = stream;
-          videoRef.current.onloadedmetadata = () => {
-            videoRef.current?.play().catch(err => {
-              console.error('Play error:', err);
-              toast.error('Could not start video playback');
-            });
+          
+          // Handle when metadata is loaded
+          const handleLoadedMetadata = () => {
+            console.log(`✅ Metadata loaded: ${videoRef.current.videoWidth}x${videoRef.current.videoHeight}`);
+            videoRef.current.play()
+              .then(() => console.log('✅ Video playing'))
+              .catch(err => {
+                console.error('❌ Play error:', err);
+                toast.error('Could not start video playback');
+              });
+            videoRef.current.removeEventListener('loadedmetadata', handleLoadedMetadata);
           };
+          
+          videoRef.current.addEventListener('loadedmetadata', handleLoadedMetadata);
         }
-      }, 100);
+      }, 50);
     } catch (error) {
-      console.error('Camera error:', error);
-      toast.error('Camera not available. Check permissions.');
+      console.error('❌ Camera error:', error);
+      toast.error('Camera not available. Please check permissions.');
     }
   };
 
-  const capturePhoto = async () => {
-    if (!videoRef.current || !canvasRef.current) return;
+  const capturePhoto = () => {
+    console.log('🎬 capturePhoto called');
+    
+    if (!videoRef.current) {
+      console.error('❌ videoRef not found');
+      toast.error('Video reference not found');
+      return;
+    }
+    
+    if (!canvasRef.current) {
+      console.error('❌ canvasRef not found');
+      toast.error('Canvas reference not found');
+      return;
+    }
+    
     try {
       const video = videoRef.current;
       const canvas = canvasRef.current;
       
-      // Wait for video to have metadata
-      if (video.videoWidth === 0 || video.videoHeight === 0) {
-        toast.error('Camera not ready. Please wait a moment and try again.');
-        return;
+      console.log(`📹 Video state: ready=${video.readyState}, width=${video.videoWidth}, height=${video.videoHeight}`);
+      
+      // Use a slightly larger dimension to ensure we capture properly
+      let width = video.videoWidth;
+      let height = video.videoHeight;
+      
+      // Fallback to a default size if dimensions are 0
+      if (width === 0 || height === 0) {
+        console.warn('⚠️ Video dimensions are 0, using default');
+        width = 1280;
+        height = 720;
       }
       
-      canvas.width = video.videoWidth;
-      canvas.height = video.videoHeight;
-      const ctx = canvas.getContext('2d');
+      console.log(`✅ Using dimensions: ${width}x${height}`);
+      
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext('2d', { willReadFrequently: true });
       if (!ctx) {
+        console.error('❌ Canvas 2D context failed');
         toast.error('Canvas not available.');
         return;
       }
       
-      ctx.drawImage(video, 0, 0);
+      console.log('🎨 Canvas context acquired, drawing image...');
       
-      // Convert to blob with proper error handling
+      // Draw without flipping to capture raw video
+      ctx.drawImage(video, 0, 0, width, height);
+      
+      console.log('✅ Image drawn to canvas');
+      
+      // Use toBlob with error handling
       canvas.toBlob(
         (blob) => {
           if (!blob) {
-            toast.error('Failed to capture image. Please try again.');
+            console.error('❌ Blob creation failed - blob is null');
+            toast.error('Failed to capture. Try repositioning camera.');
             return;
           }
+          console.log(`✅ Blob created: ${blob.size} bytes, type: ${blob.type}`);
           const imageUrl = URL.createObjectURL(blob);
+          console.log(`✅ Image URL: ${imageUrl}`);
           setCapturedImage({ blob, url: imageUrl });
+          toast.success('📸 Photo captured! Review and search.');
         }, 
         'image/jpeg', 
-        0.85
+        0.9
       );
     } catch (error) {
-      console.error('Capture error:', error);
-      toast.error('Failed to capture image: ' + error.message);
+      console.error('❌ Capture error:', error);
+      toast.error('Capture failed: ' + error.message);
     }
   };
 
@@ -293,10 +358,24 @@ export default function Navbar() {
   };
 
   const retakePhoto = () => {
+    console.log('🔄 Retaking photo...');
+    
     if (capturedImage?.url) {
       URL.revokeObjectURL(capturedImage.url);
     }
     setCapturedImage(null);
+    
+    // Restore video stream display
+    setTimeout(() => {
+      if (videoRef.current && streamRef.current) {
+        console.log('📹 Restoring video stream');
+        videoRef.current.srcObject = streamRef.current;
+        videoRef.current.play().catch(err => {
+          console.error('❌ Play error on retake:', err);
+          toast.error('Failed to restart camera');
+        });
+      }
+    }, 50);
   };
 
   const suggestions = query.length > 0
@@ -377,8 +456,18 @@ export default function Navbar() {
                     <button 
                       type="button" 
                       onClick={startVoice} 
-                      className="p-0.5 text-[#7a7a7a] hover:text-[#111] transition-colors shrink-0 relative"
-                      title={listening ? `Recording... ${Math.ceil(recordingTime)}s` : "Voice search"}
+                      disabled={showCameraModal || isProcessingImage}
+                      className={`p-0.5 transition-colors shrink-0 relative ${
+                        showCameraModal || isProcessingImage 
+                          ? 'text-[#ccc] cursor-not-allowed opacity-50' 
+                          : 'text-[#7a7a7a] hover:text-[#111]'
+                      }`}
+                      title={
+                        showCameraModal ? 'Close camera first' :
+                        isProcessingImage ? 'Image search in progress' :
+                        listening ? `Recording... ${Math.ceil(recordingTime)}s` : 
+                        "Voice search"
+                      }
                     >
                       {listening ? (
                         <>
@@ -404,7 +493,21 @@ export default function Navbar() {
 
                   {/* Image Search */}
                   <div ref={imageOptionsRef} className="relative">
-                    <button type="button" onClick={() => setShowImageOptions(v => !v)} className="p-0.5 text-[#7a7a7a] hover:text-[#111] transition-colors shrink-0">
+                    <button 
+                      type="button" 
+                      onClick={() => setShowImageOptions(v => !v)} 
+                      disabled={listening || isProcessingVoice}
+                      className={`p-0.5 transition-colors shrink-0 ${
+                        listening || isProcessingVoice 
+                          ? 'text-[#ccc] cursor-not-allowed opacity-50' 
+                          : 'text-[#7a7a7a] hover:text-[#111]'
+                      }`}
+                      title={
+                        listening ? 'Stop voice recording first' :
+                        isProcessingVoice ? 'Voice search in progress' :
+                        'Camera & image search'
+                      }
+                    >
                       {isProcessingImage ? <Loader2 className="w-3.5 sm:w-4 h-3.5 sm:h-4 animate-spin" /> : <Camera className="w-3.5 sm:w-4 h-3.5 sm:h-4" />}
                     </button>
                     <AnimatePresence>
@@ -540,87 +643,107 @@ export default function Navbar() {
         </AnimatePresence>
       </header>
 
-      {/* ── Camera Modal ─────────────────────────────────────────── */}
+      {/* ── Camera Modal (Full Screen) ─────────────────────────────────────────── */}
       <AnimatePresence>
         {showCameraModal && (
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[100] bg-black/80 flex items-center justify-center p-3 sm:p-6"
+            className="fixed inset-0 z-[100] bg-black flex flex-col overflow-hidden"
           >
-            <motion.div
-              initial={{ scale: 0.95, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.95, opacity: 0 }}
-              className="bg-white w-full max-w-md max-h-[90vh] overflow-hidden flex flex-col"
-            >
-              <div className="flex items-center justify-between px-4 sm:px-6 py-4 border-b border-[#e0e0e0]">
-                <h3 className="font-serif text-base font-semibold tracking-wide">Visual Search</h3>
-                <button 
-                  onClick={() => {
-                    setShowCameraModal(false);
-                    setCapturedImage(null);
-                  }} 
-                  className="text-[#7a7a7a] hover:text-[#111]"
-                >
-                  <X className="w-5 h-5" />
-                </button>
-              </div>
+            {/* Header */}
+            <div className="flex items-center justify-between px-4 sm:px-6 py-4 bg-white border-b border-[#e0e0e0] relative z-10">
+              <h3 className="font-serif text-base font-semibold tracking-wide text-[#111]">Visual Search</h3>
+              <button 
+                onClick={() => {
+                  setShowCameraModal(false);
+                  setCapturedImage(null);
+                }} 
+                className="text-[#7a7a7a] hover:text-[#111] transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
 
-              <div className="flex-1 overflow-y-auto p-4 sm:p-6 bg-[#f9f9f9]">
-                {!capturedImage ? (
-                  <>
-                    <div className="bg-[#f4f4f4] aspect-video flex items-center justify-center overflow-hidden rounded-lg mb-6">
-                      <video 
-                        ref={videoRef} 
-                        autoPlay 
-                        playsInline 
-                        muted 
-                        key="camera-video"
-                        className="w-full h-full object-cover"
-                        style={{ transform: 'scaleX(-1)' }}
-                      />
-                    </div>
-                    <div className="text-center text-[12px] text-[#7a7a7a] mb-4">
-                      Position product in frame for best results
-                    </div>
-                    <button
-                      onClick={capturePhoto}
-                      disabled={isProcessingImage}
-                      className="btn-primary w-full"
-                    >
-                      {isProcessingImage ? 'Processing...' : 'Capture Photo'}
-                    </button>
-                  </>
-                ) : (
-                  <>
-                    <div className="bg-[#f4f4f4] aspect-video flex items-center justify-center overflow-hidden rounded-lg mb-6">
-                      <img src={capturedImage.url} alt="Captured" className="w-full h-full object-cover" />
-                    </div>
-                    <div className="text-center text-[12px] text-[#7a7a7a] mb-4">
-                      {isProcessingImage ? 'Searching for similar products...' : 'Confirm to search for similar items'}
-                    </div>
-                    <div className="flex gap-3">
-                      <button
-                        onClick={retakePhoto}
-                        disabled={isProcessingImage}
-                        className="btn-outline flex-1"
-                      >
-                        Retake
-                      </button>
-                      <button
-                        onClick={confirmCapture}
-                        disabled={isProcessingImage}
-                        className="btn-primary flex-1"
-                      >
-                        {isProcessingImage ? 'Searching...' : 'Confirm & Search'}
-                      </button>
-                    </div>
-                  </>
-                )}
-              </div>
-            </motion.div>
+            {/* Camera Area */}
+            <div className="flex-1 flex flex-col items-center justify-center bg-black relative overflow-hidden">
+              {/* Hidden canvas for photo capture */}
+              <canvas ref={canvasRef} style={{ display: 'none' }} />
+              
+              {!capturedImage ? (
+                <>
+                  {/* Live Camera Feed */}
+                  <div className="w-full h-full flex items-center justify-center bg-black">
+                    <video 
+                      ref={videoRef} 
+                      autoPlay 
+                      playsInline 
+                      muted 
+                      key="camera-video"
+                      className="w-full h-full object-cover"
+                      style={{ transform: 'scaleX(-1)' }}
+                    />
+                  </div>
+                  
+                  {/* Position Guide */}
+                  <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 pointer-events-none">
+                    <div className="w-64 h-64 border-2 border-[#d4af37] opacity-30 rounded-lg"></div>
+                  </div>
+                  
+                  {/* Instruction Text */}
+                  <div className="absolute top-20 left-0 right-0 text-center">
+                    <p className="text-white text-sm font-medium bg-black/40 px-4 py-2 rounded-full mx-auto w-fit">
+                      Position product in frame
+                    </p>
+                  </div>
+                </>
+              ) : (
+                <>
+                  {/* Captured Image Preview */}
+                  <div className="w-full h-full flex items-center justify-center bg-black">
+                    <img src={capturedImage.url} alt="Captured" className="w-full h-full object-cover" />
+                  </div>
+                  
+                  {/* Preview Text */}
+                  <div className="absolute top-20 left-0 right-0 text-center">
+                    <p className="text-white text-sm font-medium bg-black/40 px-4 py-2 rounded-full mx-auto w-fit">
+                      {isProcessingImage ? 'Searching for similar products...' : 'Review your photo'}
+                    </p>
+                  </div>
+                </>
+              )}
+            </div>
+
+            {/* Bottom Action Bar */}
+            <div className="bg-white border-t border-[#e0e0e0] px-4 sm:px-6 py-4 relative z-10">
+              {!capturedImage ? (
+                <button
+                  onClick={capturePhoto}
+                  disabled={isProcessingImage}
+                  className="btn-primary w-full"
+                >
+                  {isProcessingImage ? 'Processing...' : 'Capture Photo'}
+                </button>
+              ) : (
+                <div className="flex gap-3">
+                  <button
+                    onClick={retakePhoto}
+                    disabled={isProcessingImage}
+                    className="btn-outline flex-1"
+                  >
+                    Retake
+                  </button>
+                  <button
+                    onClick={confirmCapture}
+                    disabled={isProcessingImage}
+                    className="btn-primary flex-1"
+                  >
+                    {isProcessingImage ? 'Searching...' : 'Confirm & Search'}
+                  </button>
+                </div>
+              )}
+            </div>
           </motion.div>
         )}
       </AnimatePresence>
