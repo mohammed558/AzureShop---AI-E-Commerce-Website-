@@ -36,6 +36,8 @@ export default function Navbar() {
   const [isProcessingImage, setIsProcessingImage] = useState(false);
   const [showImageOptions, setShowImageOptions]   = useState(false);
   const [showCameraModal, setShowCameraModal]     = useState(false);
+  const [capturedImage, setCapturedImage]        = useState(null);
+  const [recordingTime, setRecordingTime]        = useState(0);
   const [searchHistory, setSearchHistory] = useState(getSearchHistory);
   const [promoIndex, setPromoIndex]       = useState(0);
 
@@ -115,12 +117,26 @@ export default function Navbar() {
   const startVoice = async () => {
     if (listening || isProcessingVoice) return;
     setListening(true);
+    setRecordingTime(0);
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       const recorder = new MediaRecorder(stream);
       const chunks = [];
+      
+      // Timer for recording duration
+      const timerInterval = setInterval(() => {
+        setRecordingTime(prev => {
+          if (prev >= 4) {
+            clearInterval(timerInterval);
+            return 4;
+          }
+          return prev + 0.1;
+        });
+      }, 100);
+      
       recorder.ondataavailable = (e) => chunks.push(e.data);
       recorder.onstop = async () => {
+        clearInterval(timerInterval);
         setListening(false);
         setIsProcessingVoice(true);
         try {
@@ -142,14 +158,20 @@ export default function Navbar() {
           toast.error('Voice search failed. Please try again.');
         } finally {
           setIsProcessingVoice(false);
+          setRecordingTime(0);
           stream.getTracks().forEach(t => t.stop());
         }
       };
-      recorder.onerror = () => { setListening(false); toast.error('Recording error.'); };
+      recorder.onerror = () => { 
+        setListening(false); 
+        setRecordingTime(0);
+        toast.error('Recording error.'); 
+      };
       recorder.start();
       setTimeout(() => { if (recorder.state === 'recording') recorder.stop(); }, 4000);
     } catch {
       setListening(false);
+      setRecordingTime(0);
       toast.error('Microphone not available.');
     }
   };
@@ -188,19 +210,40 @@ export default function Navbar() {
     canvas.width = video.videoWidth;
     canvas.height = video.videoHeight;
     canvas.getContext('2d').drawImage(video, 0, 0);
-    setShowCameraModal(false);
-    setIsProcessingImage(true);
-    canvas.toBlob(async (blob) => {
-      const file = new File([blob], 'capture.jpg', { type: 'image/jpeg' });
-      try {
-        const results = await imageSearch(file);
-        if (results?.length > 0) {
-          toast.success(`Found ${results.length} similar products!`);
-          navigate('/search', { state: { results, label: 'Camera Search Results' } });
-        } else { toast.error('No similar products found.'); }
-      } catch { toast.error('Image search failed.'); }
-      finally { setIsProcessingImage(false); }
+    
+    // Show preview instead of immediately searching
+    canvas.toBlob((blob) => {
+      const imageUrl = URL.createObjectURL(blob);
+      setCapturedImage({ blob, url: imageUrl });
     }, 'image/jpeg', 0.85);
+  };
+
+  const confirmCapture = async () => {
+    if (!capturedImage) return;
+    setIsProcessingImage(true);
+    try {
+      const file = new File([capturedImage.blob], 'capture.jpg', { type: 'image/jpeg' });
+      const results = await imageSearch(file);
+      if (results?.length > 0) {
+        toast.success(`Found ${results.length} similar products!`);
+        setShowCameraModal(false);
+        setCapturedImage(null);
+        navigate('/search', { state: { results, label: 'Camera Search Results' } });
+      } else { 
+        toast.error('No similar products found.'); 
+      }
+    } catch { 
+      toast.error('Image search failed.'); 
+    } finally { 
+      setIsProcessingImage(false); 
+    }
+  };
+
+  const retakePhoto = () => {
+    if (capturedImage?.url) {
+      URL.revokeObjectURL(capturedImage.url);
+    }
+    setCapturedImage(null);
   };
 
   const suggestions = query.length > 0
@@ -277,11 +320,34 @@ export default function Navbar() {
                   )}
 
                   {/* Voice */}
-                  <button type="button" onClick={startVoice} className="p-0.5 text-[#7a7a7a] hover:text-[#111] transition-colors shrink-0">
-                    {listening ? <Loader2 className="w-3.5 sm:w-4 h-3.5 sm:h-4 animate-spin text-[#b8942a]" /> :
-                     isProcessingVoice ? <Loader2 className="w-3.5 sm:w-4 h-3.5 sm:h-4 animate-spin" /> :
-                     <Mic className="w-3.5 sm:w-4 h-3.5 sm:h-4" />}
-                  </button>
+                  <div className="relative">
+                    <button 
+                      type="button" 
+                      onClick={startVoice} 
+                      className="p-0.5 text-[#7a7a7a] hover:text-[#111] transition-colors shrink-0 relative"
+                      title={listening ? `Recording... ${Math.ceil(recordingTime)}s` : "Voice search"}
+                    >
+                      {listening ? (
+                        <>
+                          <Loader2 className="w-3.5 sm:w-4 h-3.5 sm:h-4 animate-spin text-[#b8942a]" />
+                          <motion.div
+                            animate={{ scale: [1, 1.3, 1] }}
+                            transition={{ duration: 0.6, repeat: Infinity }}
+                            className="absolute inset-0 bg-red-500 rounded-full opacity-30"
+                          />
+                        </>
+                      ) : isProcessingVoice ? (
+                        <Loader2 className="w-3.5 sm:w-4 h-3.5 sm:h-4 animate-spin" />
+                      ) : (
+                        <Mic className="w-3.5 sm:w-4 h-3.5 sm:h-4" />
+                      )}
+                    </button>
+                    {listening && (
+                      <span className="absolute -top-6 left-1/2 -translate-x-1/2 bg-red-500 text-white text-[10px] px-2 py-1 rounded whitespace-nowrap">
+                        {Math.ceil(recordingTime)}s / 4s
+                      </span>
+                    )}
+                  </div>
 
                   {/* Image Search */}
                   <div ref={imageOptionsRef} className="relative">
@@ -428,31 +494,70 @@ export default function Navbar() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[100] bg-black/80 flex items-center justify-center p-6"
+            className="fixed inset-0 z-[100] bg-black/80 flex items-center justify-center p-3 sm:p-6"
           >
             <motion.div
               initial={{ scale: 0.95, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.95, opacity: 0 }}
-              className="bg-white w-full max-w-md"
+              className="bg-white w-full max-w-md max-h-[90vh] overflow-hidden flex flex-col"
             >
-              <div className="flex items-center justify-between px-6 py-4 border-b border-[#e0e0e0]">
+              <div className="flex items-center justify-between px-4 sm:px-6 py-4 border-b border-[#e0e0e0]">
                 <h3 className="font-serif text-base font-semibold tracking-wide">Visual Search</h3>
-                <button onClick={() => setShowCameraModal(false)} className="text-[#7a7a7a] hover:text-[#111]">
+                <button 
+                  onClick={() => {
+                    setShowCameraModal(false);
+                    setCapturedImage(null);
+                  }} 
+                  className="text-[#7a7a7a] hover:text-[#111]"
+                >
                   <X className="w-5 h-5" />
                 </button>
               </div>
-              <div className="p-6">
-                <div className="bg-[#f4f4f4] aspect-video flex items-center justify-center overflow-hidden">
-                  <video ref={videoRef} autoPlay playsInline muted className="w-full h-full object-cover" />
-                </div>
-                <canvas ref={canvasRef} className="hidden" />
-                <button
-                  onClick={capturePhoto}
-                  className="btn-primary w-full mt-6"
-                >
-                  Capture & Search
-                </button>
+
+              <div className="flex-1 overflow-y-auto p-4 sm:p-6 bg-[#f9f9f9]">
+                {!capturedImage ? (
+                  <>
+                    <div className="bg-[#f4f4f4] aspect-video flex items-center justify-center overflow-hidden rounded-lg mb-6">
+                      <video ref={videoRef} autoPlay playsInline muted className="w-full h-full object-cover" />
+                    </div>
+                    <div className="text-center text-[12px] text-[#7a7a7a] mb-4">
+                      Position product in frame for best results
+                    </div>
+                    <button
+                      onClick={capturePhoto}
+                      disabled={isProcessingImage}
+                      className="btn-primary w-full"
+                    >
+                      {isProcessingImage ? 'Processing...' : 'Capture Photo'}
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <div className="bg-[#f4f4f4] aspect-video flex items-center justify-center overflow-hidden rounded-lg mb-6">
+                      <img src={capturedImage.url} alt="Captured" className="w-full h-full object-cover" />
+                    </div>
+                    <div className="text-center text-[12px] text-[#7a7a7a] mb-4">
+                      {isProcessingImage ? 'Searching for similar products...' : 'Confirm to search for similar items'}
+                    </div>
+                    <div className="flex gap-3">
+                      <button
+                        onClick={retakePhoto}
+                        disabled={isProcessingImage}
+                        className="btn-outline flex-1"
+                      >
+                        Retake
+                      </button>
+                      <button
+                        onClick={confirmCapture}
+                        disabled={isProcessingImage}
+                        className="btn-primary flex-1"
+                      >
+                        {isProcessingImage ? 'Searching...' : 'Confirm & Search'}
+                      </button>
+                    </div>
+                  </>
+                )}
               </div>
             </motion.div>
           </motion.div>
