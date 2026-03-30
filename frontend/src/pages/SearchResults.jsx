@@ -41,8 +41,6 @@ export default function SearchResults() {
   const [sortBy, setSortBy] = useState('relevance');
 
   useEffect(() => {
-    if (!query && !location.state?.results) return;
-    
     if (location.state?.results) {
       setAllResults(location.state.results);
       return;

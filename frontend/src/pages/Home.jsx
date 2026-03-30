@@ -178,8 +178,8 @@ export default function Home() {
             >
               <div className="aspect-[4/5] bg-ink-950 overflow-hidden">
                 <img 
-                  src="https://images.unsplash.com/photo-1549439602-43ebcb232811?q=80&w=1200&auto=format&fit=crop" 
-                  alt="AI Tech" 
+                  src="https://images.unsplash.com/photo-1639762681485-074b7f938ba0" 
+                  alt="AI Technology" 
                   className="w-full h-full object-cover opacity-60"
                 />
               </div>

@@ -16,7 +16,7 @@ function getSearchHistory() {
   try { return JSON.parse(localStorage.getItem(SEARCH_HISTORY_KEY) || '[]'); } catch { return []; }
 }
 function saveSearchHistory(history) {
-  try { localStorage.setItem(SEARCH_HISTORY_KEY, JSON.stringify(history.slice(0, 8))); } catch {}
+  try { localStorage.setItem(SEARCH_HISTORY_KEY, JSON.stringify(history.slice(0, 8))); } catch { }
 }
 
 // ─── Promo messages cycling in the top bar ─────────────────────────
@@ -27,28 +27,28 @@ const PROMOS = [
 ];
 
 export default function Navbar() {
-  const [query, setQuery]           = useState('');
-  const [listening, setListening]   = useState(false);
+  const [query, setQuery] = useState('');
+  const [listening, setListening] = useState(false);
   const [isScrolled, setIsScrolled] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-  const [showSuggestions, setShowSuggestions]   = useState(false);
+  const [showSuggestions, setShowSuggestions] = useState(false);
   const [isProcessingVoice, setIsProcessingVoice] = useState(false);
   const [isProcessingImage, setIsProcessingImage] = useState(false);
-  const [showImageOptions, setShowImageOptions]   = useState(false);
-  const [showCameraModal, setShowCameraModal]     = useState(false);
-  const [capturedImage, setCapturedImage]        = useState(null);
-  const [recordingTime, setRecordingTime]        = useState(0);
+  const [showImageOptions, setShowImageOptions] = useState(false);
+  const [showCameraModal, setShowCameraModal] = useState(false);
+  const [capturedImage, setCapturedImage] = useState(null);
+  const [recordingTime, setRecordingTime] = useState(0);
   const [searchHistory, setSearchHistory] = useState(getSearchHistory);
-  const [promoIndex, setPromoIndex]       = useState(0);
+  const [promoIndex, setPromoIndex] = useState(0);
 
-  const fileRef         = useRef();
-  const videoRef        = useRef();
-  const canvasRef       = useRef();
-  const streamRef       = useRef(null);
+  const fileRef = useRef();
+  const videoRef = useRef();
+  const canvasRef = useRef();
+  const streamRef = useRef(null);
   const imageOptionsRef = useRef();
-  const suggestionsRef  = useRef();
-  const navigate  = useNavigate();
-  const location  = useLocation();
+  const suggestionsRef = useRef();
+  const navigate = useNavigate();
+  const location = useLocation();
   const { wishlist } = useWishlist();
 
   // Scroll effect
@@ -125,12 +125,12 @@ export default function Navbar() {
       toast.error('📷 Close camera first before using voice recording');
       return;
     }
-    
+
     if (isProcessingImage) {
       toast.error('🖼️ Image search in progress. Please wait.');
       return;
     }
-    
+
     if (listening || isProcessingVoice) return;
     setListening(true);
     setRecordingTime(0);
@@ -138,7 +138,7 @@ export default function Navbar() {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       const recorder = new MediaRecorder(stream);
       const chunks = [];
-      
+
       // Timer for recording duration
       const timerInterval = setInterval(() => {
         setRecordingTime(prev => {
@@ -149,7 +149,7 @@ export default function Navbar() {
           return prev + 0.1;
         });
       }, 100);
-      
+
       recorder.ondataavailable = (e) => chunks.push(e.data);
       recorder.onstop = async () => {
         clearInterval(timerInterval);
@@ -178,10 +178,10 @@ export default function Navbar() {
           stream.getTracks().forEach(t => t.stop());
         }
       };
-      recorder.onerror = () => { 
-        setListening(false); 
+      recorder.onerror = () => {
+        setListening(false);
         setRecordingTime(0);
-        toast.error('Recording error.'); 
+        toast.error('Recording error.');
       };
       recorder.start();
       setTimeout(() => { if (recorder.state === 'recording') recorder.stop(); }, 4000);
@@ -215,33 +215,33 @@ export default function Navbar() {
       toast.error('⏹️ Stop voice recording first before using camera');
       return;
     }
-    
+
     if (isProcessingVoice) {
       toast.error('🎤 Voice search in progress. Please wait.');
       return;
     }
-    
+
     setShowImageOptions(false);
     try {
       console.log('📷 Requesting camera access...');
-      const stream = await navigator.mediaDevices.getUserMedia({ 
-        video: { 
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: {
           facingMode: 'environment',
           width: { ideal: 1280 },
           height: { ideal: 720 }
-        } 
+        }
       });
-      
+
       console.log('✅ Camera stream obtained');
       streamRef.current = stream;
       setShowCameraModal(true);
-      
+
       // Immediately attach stream to video element
       setTimeout(() => {
         if (videoRef.current) {
           console.log('📹 Attaching stream to video element');
           videoRef.current.srcObject = stream;
-          
+
           // Handle when metadata is loaded
           const handleLoadedMetadata = () => {
             console.log(`✅ Metadata loaded: ${videoRef.current.videoWidth}x${videoRef.current.videoHeight}`);
@@ -253,7 +253,7 @@ export default function Navbar() {
               });
             videoRef.current.removeEventListener('loadedmetadata', handleLoadedMetadata);
           };
-          
+
           videoRef.current.addEventListener('loadedmetadata', handleLoadedMetadata);
         }
       }, 50);
@@ -265,38 +265,38 @@ export default function Navbar() {
 
   const capturePhoto = () => {
     console.log('🎬 capturePhoto called');
-    
+
     if (!videoRef.current) {
       console.error('❌ videoRef not found');
       toast.error('Video reference not found');
       return;
     }
-    
+
     if (!canvasRef.current) {
       console.error('❌ canvasRef not found');
       toast.error('Canvas reference not found');
       return;
     }
-    
+
     try {
       const video = videoRef.current;
       const canvas = canvasRef.current;
-      
+
       console.log(`📹 Video state: ready=${video.readyState}, width=${video.videoWidth}, height=${video.videoHeight}`);
-      
+
       // Use a slightly larger dimension to ensure we capture properly
       let width = video.videoWidth;
       let height = video.videoHeight;
-      
+
       // Fallback to a default size if dimensions are 0
       if (width === 0 || height === 0) {
         console.warn('⚠️ Video dimensions are 0, using default');
         width = 1280;
         height = 720;
       }
-      
+
       console.log(`✅ Using dimensions: ${width}x${height}`);
-      
+
       canvas.width = width;
       canvas.height = height;
       const ctx = canvas.getContext('2d', { willReadFrequently: true });
@@ -305,14 +305,14 @@ export default function Navbar() {
         toast.error('Canvas not available.');
         return;
       }
-      
+
       console.log('🎨 Canvas context acquired, drawing image...');
-      
+
       // Draw without flipping to capture raw video
       ctx.drawImage(video, 0, 0, width, height);
-      
+
       console.log('✅ Image drawn to canvas');
-      
+
       // Use toBlob with error handling
       canvas.toBlob(
         (blob) => {
@@ -326,8 +326,8 @@ export default function Navbar() {
           console.log(`✅ Image URL: ${imageUrl}`);
           setCapturedImage({ blob, url: imageUrl });
           toast.success('📸 Photo captured! Review and search.');
-        }, 
-        'image/jpeg', 
+        },
+        'image/jpeg',
         0.9
       );
     } catch (error) {
@@ -347,24 +347,24 @@ export default function Navbar() {
         setShowCameraModal(false);
         setCapturedImage(null);
         navigate('/search', { state: { results, label: 'Camera Search Results' } });
-      } else { 
-        toast.error('No similar products found.'); 
+      } else {
+        toast.error('No similar products found.');
       }
-    } catch { 
-      toast.error('Image search failed.'); 
-    } finally { 
-      setIsProcessingImage(false); 
+    } catch {
+      toast.error('Image search failed.');
+    } finally {
+      setIsProcessingImage(false);
     }
   };
 
   const retakePhoto = () => {
     console.log('🔄 Retaking photo...');
-    
+
     if (capturedImage?.url) {
       URL.revokeObjectURL(capturedImage.url);
     }
     setCapturedImage(null);
-    
+
     // Restore video stream display
     setTimeout(() => {
       if (videoRef.current && streamRef.current) {
@@ -453,20 +453,19 @@ export default function Navbar() {
 
                   {/* Voice */}
                   <div className="relative">
-                    <button 
-                      type="button" 
-                      onClick={startVoice} 
+                    <button
+                      type="button"
+                      onClick={startVoice}
                       disabled={showCameraModal || isProcessingImage}
-                      className={`p-0.5 transition-colors shrink-0 relative ${
-                        showCameraModal || isProcessingImage 
-                          ? 'text-[#ccc] cursor-not-allowed opacity-50' 
+                      className={`p-0.5 transition-colors shrink-0 relative ${showCameraModal || isProcessingImage
+                          ? 'text-[#ccc] cursor-not-allowed opacity-50'
                           : 'text-[#7a7a7a] hover:text-[#111]'
-                      }`}
+                        }`}
                       title={
                         showCameraModal ? 'Close camera first' :
-                        isProcessingImage ? 'Image search in progress' :
-                        listening ? `Recording... ${Math.ceil(recordingTime)}s` : 
-                        "Voice search"
+                          isProcessingImage ? 'Image search in progress' :
+                            listening ? `Recording... ${Math.ceil(recordingTime)}s` :
+                              "Voice search"
                       }
                     >
                       {listening ? (
@@ -493,19 +492,18 @@ export default function Navbar() {
 
                   {/* Image Search */}
                   <div ref={imageOptionsRef} className="relative">
-                    <button 
-                      type="button" 
-                      onClick={() => setShowImageOptions(v => !v)} 
+                    <button
+                      type="button"
+                      onClick={() => setShowImageOptions(v => !v)}
                       disabled={listening || isProcessingVoice}
-                      className={`p-0.5 transition-colors shrink-0 ${
-                        listening || isProcessingVoice 
-                          ? 'text-[#ccc] cursor-not-allowed opacity-50' 
+                      className={`p-0.5 transition-colors shrink-0 ${listening || isProcessingVoice
+                          ? 'text-[#ccc] cursor-not-allowed opacity-50'
                           : 'text-[#7a7a7a] hover:text-[#111]'
-                      }`}
+                        }`}
                       title={
                         listening ? 'Stop voice recording first' :
-                        isProcessingVoice ? 'Voice search in progress' :
-                        'Camera & image search'
+                          isProcessingVoice ? 'Voice search in progress' :
+                            'Camera & image search'
                       }
                     >
                       {isProcessingImage ? <Loader2 className="w-3.5 sm:w-4 h-3.5 sm:h-4 animate-spin" /> : <Camera className="w-3.5 sm:w-4 h-3.5 sm:h-4" />}
@@ -655,11 +653,11 @@ export default function Navbar() {
             {/* Header */}
             <div className="flex items-center justify-between px-4 sm:px-6 py-4 bg-white border-b border-[#e0e0e0] relative z-10">
               <h3 className="font-serif text-base font-semibold tracking-wide text-[#111]">Visual Search</h3>
-              <button 
+              <button
                 onClick={() => {
                   setShowCameraModal(false);
                   setCapturedImage(null);
-                }} 
+                }}
                 className="text-[#7a7a7a] hover:text-[#111] transition-colors"
               >
                 <X className="w-5 h-5" />
@@ -670,27 +668,27 @@ export default function Navbar() {
             <div className="flex-1 flex flex-col items-center justify-center bg-black relative overflow-hidden">
               {/* Hidden canvas for photo capture */}
               <canvas ref={canvasRef} style={{ display: 'none' }} />
-              
+
               {!capturedImage ? (
                 <>
                   {/* Live Camera Feed */}
                   <div className="w-full h-full flex items-center justify-center bg-black">
-                    <video 
-                      ref={videoRef} 
-                      autoPlay 
-                      playsInline 
-                      muted 
+                    <video
+                      ref={videoRef}
+                      autoPlay
+                      playsInline
+                      muted
                       key="camera-video"
                       className="w-full h-full object-cover"
                       style={{ transform: 'scaleX(-1)' }}
                     />
                   </div>
-                  
+
                   {/* Position Guide */}
                   <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 pointer-events-none">
                     <div className="w-64 h-64 border-2 border-[#d4af37] opacity-30 rounded-lg"></div>
                   </div>
-                  
+
                   {/* Instruction Text */}
                   <div className="absolute top-20 left-0 right-0 text-center">
                     <p className="text-white text-sm font-medium bg-black/40 px-4 py-2 rounded-full mx-auto w-fit">
@@ -704,7 +702,7 @@ export default function Navbar() {
                   <div className="w-full h-full flex items-center justify-center bg-black">
                     <img src={capturedImage.url} alt="Captured" className="w-full h-full object-cover" />
                   </div>
-                  
+
                   {/* Preview Text */}
                   <div className="absolute top-20 left-0 right-0 text-center">
                     <p className="text-white text-sm font-medium bg-black/40 px-4 py-2 rounded-full mx-auto w-fit">

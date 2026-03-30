@@ -13,13 +13,20 @@ const upload = multer({ storage: multer.memoryStorage() });
 router.post("/search", async (req, res, next) => {
   try {
     const { query } = req.body;
+    const searchTerm = (query && query.trim()) ? query.trim() : '*';
 
-    if (!query || !query.trim()) {
-      return res.status(400).json({ error: "Query is required" });
+    // 1. For broad searches (Our Collection), skip expansion and return all
+    if (searchTerm === '*') {
+      const products = await productService.searchProducts('*', { limit: 40 });
+      return res.json({ 
+        products, 
+        alternatives: [], 
+        expansion: { label: 'Our Full Collection' } 
+      });
     }
 
-    // 1. Expand query using AI to extract attributes
-    const expansion = await expandQuery(query.trim());
+    // 2. Expand query using AI to extract attributes for specific searches
+    const expansion = await expandQuery(searchTerm);
 
     // 2. Main hybrid search (keyword + vector)
     // parentCategory maps specific terms (e.g. "laptops" -> "Electronics")
