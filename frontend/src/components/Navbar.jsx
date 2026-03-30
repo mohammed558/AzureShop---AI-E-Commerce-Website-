@@ -74,10 +74,15 @@ export default function Navbar() {
     return () => document.removeEventListener('mousedown', handler);
   }, []);
 
-  // Stop camera stream
+  // Stop camera stream and clean up
   useEffect(() => {
     if (!showCameraModal && streamRef.current) {
-      streamRef.current.getTracks().forEach(t => t.stop());
+      streamRef.current.getTracks().forEach(t => {
+        t.stop();
+      });
+      if (videoRef.current) {
+        videoRef.current.srcObject = null;
+      }
       streamRef.current = null;
     }
   }, [showCameraModal]);
@@ -196,26 +201,74 @@ export default function Navbar() {
   const openCamera = async () => {
     setShowImageOptions(false);
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+      const stream = await navigator.mediaDevices.getUserMedia({ 
+        video: { 
+          facingMode: 'environment',
+          width: { ideal: 1280 },
+          height: { ideal: 720 }
+        } 
+      });
+      
       streamRef.current = stream;
       setShowCameraModal(true);
-      setTimeout(() => { if (videoRef.current) { videoRef.current.srcObject = stream; videoRef.current.play(); } }, 100);
-    } catch { toast.error('Camera not available.'); }
+      
+      // Wait for video element to be ready
+      setTimeout(() => {
+        if (videoRef.current) {
+          videoRef.current.srcObject = stream;
+          videoRef.current.onloadedmetadata = () => {
+            videoRef.current?.play().catch(err => {
+              console.error('Play error:', err);
+              toast.error('Could not start video playback');
+            });
+          };
+        }
+      }, 100);
+    } catch (error) {
+      console.error('Camera error:', error);
+      toast.error('Camera not available. Check permissions.');
+    }
   };
 
   const capturePhoto = async () => {
     if (!videoRef.current || !canvasRef.current) return;
-    const video = videoRef.current;
-    const canvas = canvasRef.current;
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
-    canvas.getContext('2d').drawImage(video, 0, 0);
-    
-    // Show preview instead of immediately searching
-    canvas.toBlob((blob) => {
-      const imageUrl = URL.createObjectURL(blob);
-      setCapturedImage({ blob, url: imageUrl });
-    }, 'image/jpeg', 0.85);
+    try {
+      const video = videoRef.current;
+      const canvas = canvasRef.current;
+      
+      // Wait for video to have metadata
+      if (video.videoWidth === 0 || video.videoHeight === 0) {
+        toast.error('Camera not ready. Please wait a moment and try again.');
+        return;
+      }
+      
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) {
+        toast.error('Canvas not available.');
+        return;
+      }
+      
+      ctx.drawImage(video, 0, 0);
+      
+      // Convert to blob with proper error handling
+      canvas.toBlob(
+        (blob) => {
+          if (!blob) {
+            toast.error('Failed to capture image. Please try again.');
+            return;
+          }
+          const imageUrl = URL.createObjectURL(blob);
+          setCapturedImage({ blob, url: imageUrl });
+        }, 
+        'image/jpeg', 
+        0.85
+      );
+    } catch (error) {
+      console.error('Capture error:', error);
+      toast.error('Failed to capture image: ' + error.message);
+    }
   };
 
   const confirmCapture = async () => {
@@ -519,7 +572,15 @@ export default function Navbar() {
                 {!capturedImage ? (
                   <>
                     <div className="bg-[#f4f4f4] aspect-video flex items-center justify-center overflow-hidden rounded-lg mb-6">
-                      <video ref={videoRef} autoPlay playsInline muted className="w-full h-full object-cover" />
+                      <video 
+                        ref={videoRef} 
+                        autoPlay 
+                        playsInline 
+                        muted 
+                        key="camera-video"
+                        className="w-full h-full object-cover"
+                        style={{ transform: 'scaleX(-1)' }}
+                      />
                     </div>
                     <div className="text-center text-[12px] text-[#7a7a7a] mb-4">
                       Position product in frame for best results
