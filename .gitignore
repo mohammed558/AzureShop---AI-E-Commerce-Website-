@@ -1,0 +1,56 @@
+# Environment Variables
+.env
+.env.local
+.env.*.local
+.env.example
+
+# Dependencies
+node_modules/
+package-lock.json
+yarn.lock
+
+# Build outputs
+dist/
+build/
+*.min.js
+*.min.css
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+
+# Cache
+.cache/
+.eslintcache
+
+# OS
+.DS_Store
+.env.local.js
+
+# Temp files
+tmp/
+temp/
+*.tmp
+
+# API Keys and Secrets (IMPORTANT!)
+*credentials*
+*secrets*
+*api*key*
+*token*
