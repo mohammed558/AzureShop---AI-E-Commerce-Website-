@@ -51,7 +51,7 @@ const products = [
     "description": "30000mAh ultra-fast charging power bank with PD support.",
     "price": 5499,
     "category": "Electronics",
-    "image": "https://images.unsplash.com/photo-1620288627223-53302f4e8c74?auto=format",
+    "image": "https://media.istockphoto.com/id/1126642401/photo/power-bank-isolated-on-white-background.jpg?s=612x612&w=0&k=20&c=FMMhXxZql2guHigJvPDsi6S5Bp_QT6OsfZnD6kqcc3U=",
     "rating": 4.4,
     "stock": 50
   },
@@ -141,7 +141,7 @@ const products = [
     "description": "Heavy-duty waterproof parka for extreme cold conditions.",
     "price": 12999,
     "category": "Clothing",
-    "image": "https://images.unsplash.com/photo-1551028719-00167b16ebc5?auto=format&fit=crop&w=800&q=80",
+    "image": "https://images.unsplash.com/photo-1515645465-7b60b7242324?q=80&w=387&auto=format&fit=crop&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D",
     "rating": 4.9,
     "stock": 12
   },
@@ -150,7 +150,7 @@ const products = [
     "description": "Elegant silk evening gown for formal events and parties.",
     "price": 15999,
     "category": "Clothing",
-    "image": "https://images.unsplash.com/photo-1595777707802-07b2a0d03004?auto=format&fit=crop&w=800&q=80",
+    "image": "https://images.unsplash.com/photo-1566073771259-6a8506099945?w=800&auto=format&fit=crop&q=80",
     "rating": 4.8,
     "stock": 8
   },
@@ -177,7 +177,7 @@ const products = [
     "description": "Experience immersive sound with active noise cancellation, 30-hour battery life, and over-ear cushions.",
     "price": 4999,
     "category": "Electronics",
-    "image": "https://images.unsplash.com/photo-1505740420928-5e560c06d30e?auto=format",
+    "image": "https://images.unsplash.com/photo-1484704849700-f032a568e944?w=800&auto=format&fit=crop&q=80",
     "rating": 4.6,
     "stock": 50
   }
