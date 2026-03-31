@@ -8,6 +8,7 @@ import ProductDetail from './pages/ProductDetail';
 import Cart from './pages/Cart';
 import Wishlist from './pages/Wishlist';
 import Analytics from './pages/Analytics';
+import PaymentSuccess from './pages/PaymentSuccess';
 import { Toaster } from 'react-hot-toast';
 
 function App() {
@@ -22,6 +23,7 @@ function App() {
             <Route path="/search" element={<SearchResults />} />
             <Route path="/product/:id" element={<ProductDetail />} />
             <Route path="/cart" element={<Cart />} />
+            <Route path="/payment-success" element={<PaymentSuccess />} />
             <Route path="/wishlist" element={<Wishlist />} />
             <Route path="/analytics" element={<Analytics />} />
           </Routes>

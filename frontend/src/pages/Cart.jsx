@@ -210,6 +210,7 @@ export default function Cart() {
               </div>
 
               <button 
+                onClick={() => navigate('/payment-success')}
                 className="btn-primary w-full py-5 text-[11px] tracking-[0.3em]"
               >
                 SECURE CHECKOUT <ChevronRight className="w-4 h-4 ml-1" />
